@@ -20,8 +20,8 @@ jobs:
       - name: 安装 OpenWrt 编译依赖
         run: |
           sudo apt update
-          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-          gettext git libncurses-dev libssl-dev python3-distutils rsync unzip zlib-dev file wget curl
+          sudo apt install -y binutils bzip2 diff find flex gawk gcc-6+ getopt grep install libc-dev libz-dev
+make4.1+ perl python3.8+ rsync subversion unzip which
 
       - name: 克隆官方 OpenWrt 源码
         run: |
