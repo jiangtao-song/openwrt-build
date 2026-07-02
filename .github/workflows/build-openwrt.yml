@@ -1,0 +1,80 @@
+name: Build Official OpenWrt
+
+# 触发条件：手动触发、push、tag、定时编译
+on:
+  workflow_dispatch:  # 手动点按钮编译（推荐）
+  push:
+    branches: main
+  schedule:
+    - cron: '0 0 * * 0' # 每周日零点自动编译
+
+# 运行环境：Ubuntu 22.04
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    # 分配资源，官方编译建议 4核16G，ubuntu-22.04 标配4核16G
+    steps:
+      - name: 拉取仓库代码
+        uses: actions/checkout@v4
+
+      - name: 安装 OpenWrt 编译依赖
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+          gettext git libncurses-dev libssl-dev python3-distutils rsync unzip zlib-dev file wget curl
+
+      - name: 克隆官方 OpenWrt 源码
+        run: |
+          # 可修改分支：main（快照开发版）、23.05、24.10（稳定版）
+          git clone https://github.com/openwrt/openwrt.git openwrt
+          cd openwrt
+          git checkout openwrt-25.12 # 切换稳定分支
+
+      - name: 更新 & 安装 feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: 自定义固件配置（两种方案任选）
+        run: |
+          cd openwrt
+          # 方案1：生成默认配置，手动修改
+          make defconfig
+          # 如需自定义，上传你的 .config 到仓库根目录，执行下面覆盖命令
+          # cp ../.config .config
+          make menuconfig -n # 仅校验配置，不弹出界面
+
+      - name: 预下载编译依赖（加速编译）
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+
+      - name: 编译 OpenWrt 固件
+        run: |
+          cd openwrt
+          make -j$(nproc) V=s # V=s 输出完整日志，方便排错
+
+      - name: 收集编译产物
+        run: |
+          mkdir -p firmware
+          cp -r openwrt/bin/targets/*/*/*.bin firmware/
+          cp -r openwrt/bin/targets/*/*/*.img firmware/
+          ls firmware/
+
+      - name: 上传固件到 Artifacts（在线下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt-Firmware
+          path: firmware/
+          retention-days: 7 # 文件保留7天
+
+      - name: 发布到 GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: success()
+        with:
+          tag_name: openwrt-${{ github.sha }}
+          name: OpenWrt Official Build ${{ github.sha }}
+          files: firmware/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
